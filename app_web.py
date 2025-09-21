@@ -1,507 +1,410 @@
 import streamlit as st
-import json
-import os
 from datetime import datetime, date
 import calendar
+from supabase import create_client, Client
 
-# Configuración de la página
+# Configuración de página
 st.set_page_config(
-    page_title="Lista de Tareas - Día/Noche",
+    page_title="Lista de Tareas - Multi Usuario",
     page_icon="📝",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Función para determinar el tema según la hora
-def obtener_tema_automatico():
-    hora_actual = datetime.now().hour
-    # Modo día de 6 AM a 6 PM
-    if 6 <= hora_actual < 18:
-        return "dia"
-    else:
-        return "noche"
+# Configuración Supabase
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
-# Inicializar preferencia de tema
-if 'tema_manual' not in st.session_state:
-    st.session_state.tema_manual = False
-if 'tema_seleccionado' not in st.session_state:
-    st.session_state.tema_seleccionado = obtener_tema_automatico()
+# Inicializar cliente Supabase
+@st.cache_resource
+def init_supabase():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Definir temas
-TEMAS = {
-    "dia": {
-        "bg_primary": "#ffffff",
-        "bg_secondary": "#f0f2f6", 
-        "bg_sidebar": "#f8f9fa",
-        "text_primary": "#262730",
-        "text_secondary": "#555555",
-        "accent": "#3498db",
-        "border": "#e0e0e0",
-        "card_bg": "#ffffff",
-        "success": "#2ecc71",
-        "warning": "#f39c12",
-        "danger": "#e74c3c",
-        "emoji": "🌞"
-    },
-    "noche": {
-        "bg_primary": "#0e1117",
-        "bg_secondary": "#1a1c23",
-        "bg_sidebar": "#262730",
-        "text_primary": "#fafafa",
-        "text_secondary": "#a3a8b8",
-        "accent": "#00d4ff",
-        "border": "#4a4a5e",
-        "card_bg": "#1e1e2e",
-        "success": "#00ff88",
-        "warning": "#ffaa00",
-        "danger": "#ff4444",
-        "emoji": "🌙"
-    }
+supabase: Client = init_supabase()
+
+# Categorías disponibles
+CATEGORIAS = {
+    "🏢 Trabajo": {"color": "#3498db", "emoji": "🏢"},
+    "🏠 Personal": {"color": "#2ecc71", "emoji": "🏠"},
+    "💪 Gym/Salud": {"color": "#f39c12", "emoji": "💪"},
+    "📚 Estudio": {"color": "#9b59b6", "emoji": "📚"},
+    "🛒 Compras": {"color": "#e91e63", "emoji": "🛒"},
+    "⚡ Otro": {"color": "#95a5a6", "emoji": "⚡"}
 }
 
-# Determinar tema actual
-if not st.session_state.tema_manual:
-    tema_actual = obtener_tema_automatico()
-    st.session_state.tema_seleccionado = tema_actual
-else:
-    tema_actual = st.session_state.tema_seleccionado
-
-colores = TEMAS[tema_actual]
-
-# CSS dinámico según tema
-st.markdown(f"""
+# CSS personalizado
+st.markdown("""
 <style>
-    /* Tema general */
-    .stApp {{
-        background: linear-gradient(135deg, {colores['bg_primary']} 0%, {colores['bg_secondary']} 100%);
-    }}
-    
-    /* Sidebar */
-    section[data-testid="stSidebar"] {{
-        background: {colores['bg_sidebar']};
-        border-right: 1px solid {colores['border']};
-    }}
-    
-    /* Headers y texto */
-    h1, h2, h3, h4, h5, h6 {{
-        color: {colores['text_primary']} !important;
-    }}
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {{
-        background-color: {colores['card_bg']};
-        border-radius: 10px;
-        padding: 5px;
-    }}
-    
-    .stTabs [data-baseweb="tab"] {{
-        color: {colores['text_secondary']};
-        background-color: transparent;
-    }}
-    
-    .stTabs [aria-selected="true"] {{
-        background-color: {colores['accent']} !important;
-        color: white !important;
-    }}
-    
-    /* Cards y contenedores */
-    .element-container {{
-        background-color: {colores['card_bg']};
-        border-radius: 8px;
-        padding: 10px;
-        margin: 5px 0;
-    }}
-    
-    /* Botones */
-    .stButton > button {{
-        background-color: {colores['accent']};
+    .login-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        border: none;
-        transition: all 0.3s;
-    }}
+        padding: 2rem;
+        border-radius: 20px;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
     
-    .stButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    }}
+    .user-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 30px;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
     
-    /* Inputs */
-    input, textarea, select {{
-        background-color: {colores['card_bg']} !important;
-        color: {colores['text_primary']} !important;
-        border: 1px solid {colores['border']} !important;
-    }}
-    
-    /* Métricas */
-    [data-testid="metric-container"] {{
-        background-color: {colores['card_bg']};
-        border: 1px solid {colores['border']};
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }}
-    
-    /* Categorías badge mejorado */
-    .categoria-badge {{
+    .categoria-badge {
         padding: 4px 12px;
         border-radius: 20px;
         font-size: 12px;
         font-weight: bold;
         display: inline-block;
         margin: 2px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }}
-    
-    /* Progress bars */
-    .stProgress > div > div {{
-        background-color: {colores['accent']};
-    }}
-    
-    /* Info boxes */
-    .stAlert {{
-        background-color: {colores['card_bg']};
-        color: {colores['text_primary']};
-        border: 1px solid {colores['border']};
-    }}
-    
-    /* Efecto de transición suave */
-    * {{
-        transition: background-color 0.3s ease, color 0.3s ease;
-    }}
-    
-    /* Header especial con gradiente */
-    .main-header {{
-        background: linear-gradient(135deg, {colores['accent']} 0%, {colores['warning']} 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        margin-bottom: 20px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    }}
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Definir categorías y colores (adaptados al tema)
-CATEGORIAS = {
-    "🏢 Trabajo": {"color": colores['accent'], "emoji": "🏢"},
-    "🏠 Personal": {"color": colores['success'], "emoji": "🏠"},
-    "💪 Gym/Salud": {"color": colores['warning'], "emoji": "💪"},
-    "📚 Estudio": {"color": "#9b59b6", "emoji": "📚"},
-    "🛒 Compras": {"color": "#e91e63", "emoji": "🛒"},
-    "⚡ Otro": {"color": colores['text_secondary'], "emoji": "⚡"}
-}
+# Funciones de autenticación
+def registrar_usuario(email, password, nombre):
+    try:
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {
+                "data": {
+                    "nombre": nombre
+                }
+            }
+        })
+        
+        if response.user:
+            # Crear perfil
+            supabase.table('profiles').insert({
+                "id": response.user.id,
+                "email": email,
+                "nombre": nombre
+            }).execute()
+            return True, "✅ Registro exitoso! Ahora puedes iniciar sesión"
+        return False, "Error en el registro"
+    except Exception as e:
+        error_msg = str(e)
+        if "already registered" in error_msg:
+            return False, "Este email ya está registrado"
+        return False, f"Error: {error_msg}"
 
-# Archivo para guardar
-ARCHIVO = "tareas_web.json"
+def iniciar_sesion(email, password):
+    try:
+        response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+        
+        if response.user:
+            st.session_state['logged_in'] = True
+            st.session_state['user_id'] = response.user.id
+            st.session_state['user_email'] = email
+            
+            # Obtener nombre del perfil
+            profile = supabase.table('profiles').select("nombre").eq('id', response.user.id).execute()
+            if profile.data:
+                st.session_state['user_nombre'] = profile.data[0]['nombre']
+            else:
+                st.session_state['user_nombre'] = email.split('@')[0]
+            
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        return False
 
-# Funciones para persistencia
-def cargar_tareas():
-    if os.path.exists(ARCHIVO):
-        with open(ARCHIVO, 'r') as f:
-            tareas = json.load(f)
-            for tarea in tareas:
-                if 'categoria' not in tarea:
-                    tarea['categoria'] = "⚡ Otro"
-            return tareas
-    return []
+def cerrar_sesion():
+    supabase.auth.sign_out()
+    for key in ['logged_in', 'user_id', 'user_email', 'user_nombre']:
+        if key in st.session_state:
+            del st.session_state[key]
 
-def guardar_tareas(tareas):
-    with open(ARCHIVO, 'w') as f:
-        json.dump(tareas, f)
+# CRUD de tareas
+def obtener_tareas():
+    try:
+        response = supabase.table('tareas')\
+            .select("*")\
+            .eq('user_id', st.session_state['user_id'])\
+            .order('fecha', desc=False)\
+            .execute()
+        return response.data
+    except:
+        return []
 
-# Inicializar
-if 'tareas' not in st.session_state:
-    st.session_state.tareas = cargar_tareas()
+def agregar_tarea(texto, categoria, fecha, urgente):
+    try:
+        response = supabase.table('tareas').insert({
+            'user_id': st.session_state['user_id'],
+            'texto': texto,
+            'categoria': categoria,
+            'fecha': fecha.isoformat() if fecha else None,
+            'urgente': urgente,
+            'completada': False
+        }).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error: {e}")
+        return False
 
-# SIDEBAR con selector de tema
-with st.sidebar:
-    st.markdown(f"### {colores['emoji']} Configuración de Tema")
+def actualizar_tarea(tarea_id, updates):
+    try:
+        response = supabase.table('tareas')\
+            .update(updates)\
+            .eq('id', tarea_id)\
+            .eq('user_id', st.session_state['user_id'])\
+            .execute()
+        return True
+    except:
+        return False
+
+def eliminar_tarea(tarea_id):
+    try:
+        response = supabase.table('tareas')\
+            .delete()\
+            .eq('id', tarea_id)\
+            .eq('user_id', st.session_state['user_id'])\
+            .execute()
+        return True
+    except:
+        return False
+
+# PÁGINA DE LOGIN/REGISTRO
+if 'logged_in' not in st.session_state or not st.session_state['logged_in']:
+    # Header con gradiente
+    st.markdown('<div class="login-header"><h1>🔐 Sistema de Tareas</h1><p>Con base de datos PostgreSQL</p></div>', unsafe_allow_html=True)
     
-    # Mostrar hora actual
-    hora_actual = datetime.now().strftime("%H:%M")
-    st.info(f"🕐 Hora actual: {hora_actual}")
+    col1, col2, col3 = st.columns([1, 2, 1])
     
-    # Toggle manual/automático
-    modo_manual = st.checkbox("Control manual del tema", value=st.session_state.tema_manual)
-    st.session_state.tema_manual = modo_manual
+    with col2:
+        tab1, tab2 = st.tabs(["🔑 Iniciar Sesión", "📝 Crear Cuenta"])
+        
+        with tab1:
+            with st.form("login_form"):
+                st.subheader("Bienvenido de vuelta")
+                email = st.text_input("📧 Email", placeholder="tu@email.com")
+                password = st.text_input("🔒 Contraseña", type="password")
+                
+                submit = st.form_submit_button("Iniciar Sesión", type="primary", use_container_width=True)
+                
+                if submit:
+                    if email and password:
+                        if iniciar_sesion(email, password):
+                            st.success("✅ ¡Bienvenido!")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error("❌ Email o contraseña incorrectos")
+                    else:
+                        st.warning("Por favor completa todos los campos")
+        
+        with tab2:
+            with st.form("register_form"):
+                st.subheader("Crea tu cuenta gratis")
+                nombre = st.text_input("👤 Tu nombre", placeholder="Juan Pérez")
+                email = st.text_input("📧 Email", placeholder="tu@email.com")
+                password = st.text_input("🔒 Contraseña", type="password", help="Mínimo 6 caracteres")
+                password2 = st.text_input("🔒 Confirmar contraseña", type="password")
+                
+                submit = st.form_submit_button("Crear Cuenta", type="primary", use_container_width=True)
+                
+                if submit:
+                    if not nombre or not email or not password:
+                        st.warning("Por favor completa todos los campos")
+                    elif password != password2:
+                        st.error("Las contraseñas no coinciden")
+                    elif len(password) < 6:
+                        st.error("La contraseña debe tener mínimo 6 caracteres")
+                    else:
+                        success, message = registrar_usuario(email, password, nombre)
+                        if success:
+                            st.success(message)
+                            st.info("👆 Ve a la pestaña 'Iniciar Sesión'")
+                        else:
+                            st.error(message)
+
+# APLICACIÓN PRINCIPAL (Usuario logueado)
+else:
+    # Sidebar con info del usuario
+    with st.sidebar:
+        st.markdown(f'<div class="user-badge">👤 {st.session_state["user_nombre"]}</div>', unsafe_allow_html=True)
+        st.caption(f"📧 {st.session_state['user_email']}")
+        
+        if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            cerrar_sesion()
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # Estadísticas rápidas
+        tareas = obtener_tareas()
+        total = len(tareas)
+        completadas = sum(1 for t in tareas if t['completada'])
+        pendientes = total - completadas
+        
+        st.metric("📊 Total", total)
+        col1, col2 = st.columns(2)
+        col1.metric("✅ Listas", completadas)
+        col2.metric("⏳ Pendientes", pendientes)
     
-    if modo_manual:
-        tema_elegido = st.radio(
-            "Selecciona el tema:",
-            ["dia", "noche"],
-            format_func=lambda x: f"{TEMAS[x]['emoji']} Modo {x.capitalize()}",
-            index=0 if st.session_state.tema_seleccionado == "dia" else 1
-        )
-        st.session_state.tema_seleccionado = tema_elegido
-    else:
-        st.success(f"Tema automático activo: **Modo {tema_actual.capitalize()}**")
-        st.caption("☀️ Día: 6 AM - 6 PM")
-        st.caption("🌙 Noche: 6 PM - 6 AM")
+    # Contenido principal
+    st.title(f"📝 Hola, {st.session_state['user_nombre']}!")
     
-    st.markdown("---")
-    st.markdown("### 📊 Resumen Rápido")
-    total_sidebar = len(st.session_state.tareas)
-    pendientes_sidebar = sum(1 for t in st.session_state.tareas if not t['completada'])
-    st.metric("Total tareas", total_sidebar)
-    st.metric("Pendientes", pendientes_sidebar)
-
-# Título principal con diseño especial
-st.markdown(f'<div class="main-header"><h1>{colores["emoji"]} Mi Lista de Tareas</h1><p>Modo {tema_actual.capitalize()} activado</p></div>', unsafe_allow_html=True)
-
-# TABS con los mismos estilos
-tab1, tab2, tab3 = st.tabs(["📝 Lista de Tareas", "📅 Vista Calendario", "📊 Estadísticas"])
-
-with tab1:
-    # AGREGAR TAREA
-    with st.form("nueva_tarea", clear_on_submit=True):
-        st.markdown(f"### ➕ Agregar Nueva Tarea")
-        col1, col2, col3 = st.columns([3, 1.5, 1.5])
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["📝 Tareas", "📅 Calendario", "📊 Estadísticas"])
+    
+    with tab1:
+        # Agregar tarea
+        with st.form("nueva_tarea", clear_on_submit=True):
+            col1, col2, col3 = st.columns([3, 2, 2])
+            
+            with col1:
+                texto = st.text_input("Nueva tarea", placeholder="¿Qué necesitas hacer?")
+            with col2:
+                categoria = st.selectbox("Categoría", list(CATEGORIAS.keys()))
+            with col3:
+                fecha = st.date_input("Fecha", min_value=date.today())
+            
+            col4, col5 = st.columns([1, 4])
+            with col4:
+                urgente = st.checkbox("🔴 Urgente")
+            with col5:
+                submit = st.form_submit_button("➕ Agregar Tarea", type="primary")
+            
+            if submit and texto:
+                if agregar_tarea(texto, categoria, fecha, urgente):
+                    st.success("✅ Tarea agregada!")
+                    st.rerun()
+        
+        # Filtros
+        st.markdown("---")
+        col1, col2 = st.columns(2)
         
         with col1:
-            nueva_tarea = st.text_input("¿Qué necesitas hacer?", 
-                                       placeholder="Escribe tu tarea aquí...")
+            filtro_estado = st.radio("Filtrar:", ["Todas", "Pendientes", "Completadas"], horizontal=True)
         with col2:
-            categoria = st.selectbox("Categoría", 
-                                    options=list(CATEGORIAS.keys()),
-                                    index=0)
-        with col3:
-            fecha = st.date_input("Fecha", 
-                                min_value=date.today(),
-                                format="DD/MM/YYYY")
+            filtro_categoria = st.multiselect("Categorías:", list(CATEGORIAS.keys()), default=list(CATEGORIAS.keys()))
         
-        col4, col5, col6 = st.columns([1, 1, 3])
-        with col4:
-            urgente = st.checkbox("🔴 Urgente")
-        with col5:
-            submitted = st.form_submit_button("➕ Agregar", 
-                                             type="primary", 
-                                             use_container_width=True)
-
-    if submitted and nueva_tarea:
-        st.session_state.tareas.append({
-            'texto': nueva_tarea,
-            'fecha': fecha.strftime("%d/%m/%Y"),
-            'categoria': categoria,
-            'completada': False,
-            'urgente': urgente
-        })
-        guardar_tareas(st.session_state.tareas)
-        st.success("✅ Tarea agregada exitosamente!")
-        st.rerun()
-
-    # FILTROS
-    st.markdown("### 🔍 Filtros")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        filtro_estado = st.radio("Estado:", 
-                         ["Todas", "Pendientes", "Completadas"], 
-                         horizontal=True)
-    
-    with col2:
-        categorias_seleccionadas = st.multiselect(
-            "Categorías:",
-            options=list(CATEGORIAS.keys()),
-            default=list(CATEGORIAS.keys())
-        )
-
-    # APLICAR FILTROS
-    tareas_filtradas = st.session_state.tareas
-
-    if filtro_estado == "Pendientes":
-        tareas_filtradas = [t for t in tareas_filtradas if not t['completada']]
-    elif filtro_estado == "Completadas":
-        tareas_filtradas = [t for t in tareas_filtradas if t['completada']]
-
-    tareas_filtradas = [t for t in tareas_filtradas 
-                        if t.get('categoria', "⚡ Otro") in categorias_seleccionadas]
-
-    # MOSTRAR TAREAS
-    st.markdown("### 📌 Tareas")
-    
-    if not tareas_filtradas:
-        st.info(f"No hay tareas para mostrar {colores['emoji']}")
-    else:
-        for i, tarea in enumerate(st.session_state.tareas):
-            if tarea not in tareas_filtradas:
-                continue
-            
-            categoria_actual = tarea.get('categoria', "⚡ Otro")
-            color = CATEGORIAS[categoria_actual]["color"]
-            
-            with st.container():
-                col1, col2, col3, col4, col5 = st.columns([0.5, 3, 1.5, 1.5, 0.5])
-                
-                with col1:
-                    completada = st.checkbox("", 
-                                            value=tarea['completada'],
-                                            key=f"check_{i}")
-                    if completada != tarea['completada']:
-                        st.session_state.tareas[i]['completada'] = completada
-                        guardar_tareas(st.session_state.tareas)
-                        st.rerun()
-                
-                with col2:
-                    categoria_html = f'<span class="categoria-badge" style="background-color: {color}; color: white;">{categoria_actual}</span>'
+        # Mostrar tareas
+        tareas = obtener_tareas()
+        
+        # Aplicar filtros
+        if filtro_estado == "Pendientes":
+            tareas = [t for t in tareas if not t['completada']]
+        elif filtro_estado == "Completadas":
+            tareas = [t for t in tareas if t['completada']]
+        
+        tareas = [t for t in tareas if t.get('categoria', '⚡ Otro') in filtro_categoria]
+        
+        if tareas:
+            st.markdown("### 📌 Tus tareas")
+            for tarea in tareas:
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([0.5, 4, 1.5, 0.5])
                     
-                    if tarea['completada']:
-                        st.markdown(f"{categoria_html} ~~{tarea['texto']}~~", 
-                                  unsafe_allow_html=True)
-                    elif tarea.get('urgente'):
-                        st.markdown(f"{categoria_html} 🔴 **{tarea['texto']}**", 
-                                  unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"{categoria_html} {tarea['texto']}", 
-                                  unsafe_allow_html=True)
-                
-                with col3:
-                    st.caption(f"📅 {tarea['fecha']}")
-                
-                with col4:
-                    nueva_cat = st.selectbox("", 
-                                            options=list(CATEGORIAS.keys()),
-                                            index=list(CATEGORIAS.keys()).index(categoria_actual),
-                                            key=f"cat_{i}",
-                                            label_visibility="collapsed")
-                    if nueva_cat != categoria_actual:
-                        st.session_state.tareas[i]['categoria'] = nueva_cat
-                        guardar_tareas(st.session_state.tareas)
-                        st.rerun()
-                
-                with col5:
-                    if st.button("🗑️", key=f"del_{i}"):
-                        st.session_state.tareas.pop(i)
-                        guardar_tareas(st.session_state.tareas)
-                        st.rerun()
-
-with tab2:
-    st.header(f"📅 Vista de Calendario {colores['emoji']}")
+                    with col1:
+                        completada = st.checkbox("", value=tarea['completada'], key=f"check_{tarea['id']}")
+                        if completada != tarea['completada']:
+                            actualizar_tarea(tarea['id'], {'completada': completada})
+                            st.rerun()
+                    
+                    with col2:
+                        cat = tarea.get('categoria', '⚡ Otro')
+                        color = CATEGORIAS.get(cat, CATEGORIAS['⚡ Otro'])['color']
+                        
+                        html = f'<span class="categoria-badge" style="background-color: {color}; color: white;">{cat}</span> '
+                        
+                        if tarea['completada']:
+                            html += f"~~{tarea['texto']}~~"
+                        elif tarea.get('urgente'):
+                            html += f"🔴 **{tarea['texto']}**"
+                        else:
+                            html += tarea['texto']
+                        
+                        st.markdown(html, unsafe_allow_html=True)
+                    
+                    with col3:
+                        if tarea.get('fecha'):
+                            fecha_str = datetime.fromisoformat(tarea['fecha']).strftime("%d/%m")
+                            st.caption(f"📅 {fecha_str}")
+                    
+                    with col4:
+                        if st.button("🗑️", key=f"del_{tarea['id']}"):
+                            eliminar_tarea(tarea['id'])
+                            st.rerun()
+        else:
+            st.info("No hay tareas. ¡Agrega una para empezar!")
     
-    # Selector de mes y año
-    col1, col2 = st.columns(2)
-    with col1:
-        mes = st.selectbox("Mes", 
-                          options=list(range(1, 13)),
-                          format_func=lambda x: calendar.month_name[x],
-                          index=datetime.now().month - 1,
-                          key="mes_cal")
-    with col2:
-        año = st.selectbox("Año", 
-                          options=list(range(2024, 2030)),
-                          index=list(range(2024, 2030)).index(datetime.now().year),
-                          key="año_cal")
-    
-    # Crear calendario
-    cal = calendar.monthcalendar(año, mes)
-    dias_semana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
-    
-    # Mostrar calendario con estilo mejorado
-    st.markdown(f"<div style='background: {colores['card_bg']}; padding: 20px; border-radius: 10px;'>", unsafe_allow_html=True)
-    
-    cols = st.columns(7)
-    for i, dia in enumerate(dias_semana):
-        cols[i].markdown(f"**{dia}**")
-    
-    for semana in cal:
+    with tab2:
+        st.header("📅 Calendario")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            mes = st.selectbox("Mes", range(1, 13), format_func=lambda x: calendar.month_name[x], index=datetime.now().month - 1)
+        with col2:
+            año = st.selectbox("Año", range(2024, 2030))
+        
+        # Calendario
+        cal = calendar.monthcalendar(año, mes)
+        dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+        
         cols = st.columns(7)
-        for i, dia in enumerate(semana):
-            if dia == 0:
-                cols[i].write("")
-            else:
-                fecha_str = f"{dia:02d}/{mes:02d}/{año}"
-                tareas_del_dia = [t for t in st.session_state.tareas 
-                                 if t.get('fecha') == fecha_str and not t['completada']]
-                
-                if tareas_del_dia:
-                    categorias_dia = set([t.get('categoria', "⚡ Otro") for t in tareas_del_dia])
-                    emojis = "".join([CATEGORIAS[cat]["emoji"] for cat in categorias_dia])
-                    
-                    # Resaltar día actual
-                    if fecha_str == datetime.now().strftime("%d/%m/%Y"):
-                        cols[i].markdown(f"**🔵 {dia}**  \n{emojis}")
-                    else:
-                        cols[i].markdown(f"**{dia}**  \n{emojis}")
+        for i, dia in enumerate(dias):
+            cols[i].markdown(f"**{dia}**")
+        
+        tareas = obtener_tareas()
+        
+        for semana in cal:
+            cols = st.columns(7)
+            for i, dia in enumerate(semana):
+                if dia == 0:
+                    cols[i].write("")
                 else:
-                    if fecha_str == datetime.now().strftime("%d/%m/%Y"):
-                        cols[i].markdown(f"**🔵 {dia}**")
+                    fecha_str = f"{año}-{mes:02d}-{dia:02d}"
+                    tareas_dia = [t for t in tareas if t.get('fecha') and t['fecha'].startswith(fecha_str)]
+                    
+                    if tareas_dia:
+                        emojis = "".join([CATEGORIAS[t.get('categoria', '⚡ Otro')]["emoji"] for t in tareas_dia[:3]])
+                        cols[i].markdown(f"**{dia}**\n{emojis}")
                     else:
-                        cols[i].markdown(f"**{dia}**")
+                        cols[i].markdown(f"{dia}")
     
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Lista de tareas del mes
-    st.markdown("---")
-    st.subheader(f"📋 Tareas del mes")
-    
-    tareas_mes = [t for t in st.session_state.tareas 
-                  if t.get('fecha') and 
-                  int(t['fecha'].split('/')[1]) == mes and 
-                  int(t['fecha'].split('/')[2]) == año and
-                  not t['completada']]
-    
-    if tareas_mes:
-        for categoria in CATEGORIAS.keys():
-            tareas_categoria = [t for t in tareas_mes if t.get('categoria') == categoria]
-            if tareas_categoria:
-                with st.expander(f"{categoria} ({len(tareas_categoria)} tareas)"):
-                    for tarea in tareas_categoria:
-                        urgente = "🔴 " if tarea.get('urgente') else ""
-                        st.write(f"• {urgente}**{tarea['fecha']}** - {tarea['texto']}")
-    else:
-        st.info(f"No hay tareas pendientes este mes {colores['emoji']}")
-
-with tab3:
-    st.header(f"📊 Estadísticas {colores['emoji']}")
-    
-    # Métricas principales con diseño mejorado
-    col1, col2, col3, col4 = st.columns(4)
-    
-    total = len(st.session_state.tareas)
-    completadas = sum(1 for t in st.session_state.tareas if t['completada'])
-    pendientes = total - completadas
-    urgentes = sum(1 for t in st.session_state.tareas if t.get('urgente') and not t['completada'])
-    
-    col1.metric("📊 Total", total, delta=None)
-    col2.metric("✅ Completadas", completadas, delta=f"{completadas/total*100:.0f}%" if total > 0 else "0%")
-    col3.metric("⏳ Pendientes", pendientes)
-    col4.metric("🔴 Urgentes", urgentes)
-    
-    # Estadísticas por categoría con barras de progreso
-    st.markdown("---")
-    st.subheader("📈 Progreso por Categoría")
-    
-    for categoria in CATEGORIAS.keys():
-        tareas_cat = [t for t in st.session_state.tareas if t.get('categoria') == categoria]
-        if tareas_cat:
-            total_cat = len(tareas_cat)
-            completadas_cat = sum(1 for t in tareas_cat if t['completada'])
+    with tab3:
+        st.header("📊 Tus Estadísticas")
+        
+        tareas = obtener_tareas()
+        
+        if tareas:
+            col1, col2, col3 = st.columns(3)
             
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown(f"**{categoria}**")
-                if total_cat > 0:
-                    progreso = completadas_cat / total_cat
-                    st.progress(progreso)
-            with col2:
-                st.metric("", f"{completadas_cat}/{total_cat}", 
-                         delta=f"{completadas_cat/total_cat*100:.0f}%" if total_cat > 0 else "0%",
-                         label_visibility="collapsed")
-    
-    # Resumen del día
-    st.markdown("---")
-    st.subheader(f"📆 Resumen de Hoy")
-    
-    hoy = datetime.now().strftime("%d/%m/%Y")
-    tareas_hoy = [t for t in st.session_state.tareas if t.get('fecha') == hoy]
-    
-    if tareas_hoy:
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Tareas para hoy", len(tareas_hoy))
-        col2.metric("Completadas", sum(1 for t in tareas_hoy if t['completada']))
-        col3.metric("Pendientes", sum(1 for t in tareas_hoy if not t['completada']))
-    else:
-        st.info(f"No hay tareas programadas para hoy {colores['emoji']}")
+            total = len(tareas)
+            comp = sum(1 for t in tareas if t['completada'])
+            pend = total - comp
+            
+            col1.metric("📊 Total", total)
+            col2.metric("✅ Completadas", comp)
+            col3.metric("⏳ Pendientes", pend)
+            
+            if total > 0:
+                st.progress(comp / total)
+                st.caption(f"Has completado el {(comp/total)*100:.0f}% de tus tareas")
+            
+            # Por categoría
+            st.markdown("---")
+            for cat in CATEGORIAS.keys():
+                tareas_cat = [t for t in tareas if t.get('categoria') == cat]
+                if tareas_cat:
+                    st.write(f"**{cat}**: {len(tareas_cat)} tareas")
+        else:
+            st.info("Sin datos aún. ¡Agrega tareas para ver estadísticas!")
 
-# PIE DE PÁGINA
+# Footer
 st.markdown("---")
-st.caption(f"Hecho con Python + Streamlit 🚀 | Modo {tema_actual.capitalize()} {colores['emoji']} | [Ver código](https://github.com/MetaEnzo/Lista-tareas-web)")
+st.caption("💾 PostgreSQL + 🔐 Autenticación | Powered by Supabase")
+
+
+
