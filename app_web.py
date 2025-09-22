@@ -899,6 +899,11 @@ else:
         col1, col2 = st.columns(2)
         col1.metric("✅ Listas", completadas)
         col2.metric("⏳ Pendientes", pendientes)
+        
+        # Diagnóstico rápido de zona horaria
+        st.markdown("---")
+        st.caption("🕒 Hora local (America/Santiago)")
+        st.write(now_scl().strftime("%Y-%m-%d %H:%M:%S %Z%z"))
     
     # Contenido principal
     st.title(f"📝 Hola, {st.session_state['user_nombre']}!")
