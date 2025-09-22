@@ -3,6 +3,7 @@ supabase
 plotly
 pandas
 python-dateutil
+pytz
 
 
 

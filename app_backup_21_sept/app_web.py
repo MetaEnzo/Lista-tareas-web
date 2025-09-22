@@ -1,11 +1,10 @@
 import streamlit as st
-from datetime import datetime, date, timedelta, time
+from datetime import datetime, date, timedelta
 import calendar
 from supabase import create_client, Client
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import pytz
 
 # Configuración de página
 st.set_page_config(
@@ -46,25 +45,6 @@ CATEGORIAS = {
     "📚 Estudio": {"color": "#9b59b6", "emoji": "📚"},
     "🛒 Compras": {"color": "#e91e63", "emoji": "🛒"},
     "⚡ Otro": {"color": "#95a5a6", "emoji": "⚡"}
-}
-
-# Zonas horarias disponibles
-ZONAS_HORARIAS = {
-    "🌎 UTC": "UTC",
-    "🇺🇸 Nueva York": "America/New_York",
-    "🇺🇸 Los Ángeles": "America/Los_Angeles",
-    "🇲🇽 Ciudad de México": "America/Mexico_City",
-    "🇲🇽 Tijuana": "America/Tijuana",
-    "🇪🇸 Madrid": "Europe/Madrid",
-    "🇬🇧 Londres": "Europe/London",
-    "🇫🇷 París": "Europe/Paris",
-    "🇩🇪 Berlín": "Europe/Berlin",
-    "🇯🇵 Tokio": "Asia/Tokyo",
-    "🇨🇳 Beijing": "Asia/Shanghai",
-    "🇦🇺 Sídney": "Australia/Sydney",
-    "🇧🇷 São Paulo": "America/Sao_Paulo",
-    "🇦🇷 Buenos Aires": "America/Argentina/Buenos_Aires",
-    "🇨🇱 Santiago": "America/Santiago"
 }
 
 # Inicializar tema en session state
@@ -544,15 +524,13 @@ def obtener_tareas():
     except:
         return []
 
-def agregar_tarea(texto, categoria, fecha, urgente, hora=None, zona_horaria=None):
+def agregar_tarea(texto, categoria, fecha, urgente):
     try:
         response = supabase.table('tareas').insert({
             'user_id': st.session_state['user_id'],
             'texto': texto,
             'categoria': categoria,
             'fecha': fecha.isoformat() if fecha else None,
-            'hora': hora.isoformat() if hora else None,
-            'zona_horaria': zona_horaria or 'America/Mexico_City',
             'urgente': urgente,
             'completada': False
         }).execute()
@@ -898,32 +876,23 @@ else:
     with tab1:
         # Agregar tarea
         with st.form("nueva_tarea", clear_on_submit=True):
-            col1, col2 = st.columns([3, 2])
+            col1, col2, col3 = st.columns([3, 2, 2])
             
             with col1:
                 texto = st.text_input("Nueva tarea", placeholder="¿Qué necesitas hacer?")
             with col2:
                 categoria = st.selectbox("Categoría", list(CATEGORIAS.keys()))
-            
-            col3, col4, col5 = st.columns([2, 2, 2])
-            
             with col3:
-                fecha = st.date_input("📅 Fecha", min_value=date.today())
-            with col4:
-                hora = st.time_input("🕐 Hora", value=None, help="Opcional: hora específica del día")
-            with col5:
-                zona_horaria = st.selectbox("🌍 Zona Horaria", list(ZONAS_HORARIAS.keys()), 
-                                          index=3, help="Zona horaria para la tarea")
+                fecha = st.date_input("Fecha", min_value=date.today())
             
-            col6, col7 = st.columns([1, 4])
-            with col6:
+            col4, col5 = st.columns([1, 4])
+            with col4:
                 urgente = st.checkbox("🔴 Urgente", help="Marca esta tarea como urgente")
-            with col7:
+            with col5:
                 submit = st.form_submit_button("➕ Agregar Tarea", type="primary")
             
             if submit and texto:
-                zona_horaria_value = ZONAS_HORARIAS[zona_horaria]
-                if agregar_tarea(texto, categoria, fecha, urgente, hora, zona_horaria_value):
+                if agregar_tarea(texto, categoria, fecha, urgente):
                     st.success("✅ Tarea agregada!")
                     st.rerun()
         
@@ -1044,27 +1013,9 @@ else:
                         st.markdown(html, unsafe_allow_html=True)
                     
                     with col3:
-                        fecha_hora_info = []
                         if tarea.get('fecha'):
                             fecha_str = datetime.fromisoformat(tarea['fecha']).strftime("%d/%m")
-                            fecha_hora_info.append(f"📅 {fecha_str}")
-                        
-                        if tarea.get('hora'):
-                            hora_str = tarea['hora'][:5]  # Formato HH:MM
-                            fecha_hora_info.append(f"🕐 {hora_str}")
-                        
-                        if tarea.get('zona_horaria'):
-                            # Obtener el nombre amigable de la zona horaria
-                            zona_nombre = None
-                            for nombre, zona in ZONAS_HORARIAS.items():
-                                if zona == tarea['zona_horaria']:
-                                    zona_nombre = nombre
-                                    break
-                            if zona_nombre:
-                                fecha_hora_info.append(f"🌍 {zona_nombre.split(' ')[1] if ' ' in zona_nombre else zona_nombre}")
-                        
-                        if fecha_hora_info:
-                            st.caption(" | ".join(fecha_hora_info))
+                            st.caption(f"📅 {fecha_str}")
                     
                     with col4:
                         if st.button("🗑️", key=f"del_{tarea['id']}"):
