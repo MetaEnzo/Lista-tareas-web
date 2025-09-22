@@ -7,6 +7,17 @@ import plotly.graph_objects as go
 import pandas as pd
 import pytz
 
+# Zona horaria por defecto: Santiago de Chile
+SCL_TZ = pytz.timezone("America/Santiago")
+
+def now_scl():
+    """Retorna datetime actual con tz America/Santiago"""
+    return datetime.now(SCL_TZ)
+
+def today_scl():
+    """Retorna date actual en America/Santiago"""
+    return now_scl().date()
+
 # Configuración de página
 st.set_page_config(
     page_title="Lista de Tareas - Multi Usuario",
@@ -552,7 +563,7 @@ def agregar_tarea(texto, categoria, fecha, urgente, hora=None, zona_horaria=None
             'categoria': categoria,
             'fecha': fecha.isoformat() if fecha else None,
             'hora': hora.isoformat() if hora else None,
-            'zona_horaria': zona_horaria or 'America/Mexico_City',
+            'zona_horaria': zona_horaria or 'America/Santiago',
             'urgente': urgente,
             'completada': False
         }).execute()
@@ -614,16 +625,16 @@ def buscar_tareas(termino_busqueda, categoria_filtro=None, estado_filtro=None, f
         fecha_match = True
         if fecha_filtro:
             if fecha_filtro == "Hoy":
-                hoy = date.today().isoformat()
+                hoy = today_scl().isoformat()
                 fecha_match = tarea.get('fecha') == hoy
             elif fecha_filtro == "Esta semana":
-                hoy = date.today()
+                hoy = today_scl()
                 inicio_semana = hoy - timedelta(days=hoy.weekday())
                 fin_semana = inicio_semana + timedelta(days=6)
                 fecha_tarea = datetime.fromisoformat(tarea.get('fecha', '1900-01-01')).date()
                 fecha_match = inicio_semana <= fecha_tarea <= fin_semana
             elif fecha_filtro == "Vencidas":
-                hoy = date.today().isoformat()
+                hoy = today_scl().isoformat()
                 fecha_match = tarea.get('fecha') and tarea.get('fecha') < hoy and not tarea.get('completada', False)
         
         if texto_match and categoria_match and estado_match and fecha_match:
@@ -679,7 +690,7 @@ def generar_estadisticas_avanzadas(tareas):
     )
     
     # 2. Gráfico de progreso semanal
-    hoy = date.today()
+    hoy = today_scl()
     inicio_semana = hoy - timedelta(days=hoy.weekday())
     dias_semana = [inicio_semana + timedelta(days=i) for i in range(7)]
     nombres_dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -723,8 +734,8 @@ def generar_estadisticas_avanzadas(tareas):
     porcentaje_completado = (tareas_completadas / total_tareas * 100) if total_tareas > 0 else 0
     
     # Tareas vencidas
-    hoy_str = date.today().isoformat()
-    tareas_vencidas = len(df[(df['fecha'].dt.date < date.today()) & (df['completada'] == False)])
+    hoy_str = today_scl().isoformat()
+    tareas_vencidas = len(df[(df['fecha'].dt.date < today_scl()) & (df['completada'] == False)])
     
     # Tareas urgentes
     tareas_urgentes = len(df[df.get('urgente', False) == True])
@@ -908,12 +919,12 @@ else:
             col3, col4, col5 = st.columns([2, 2, 2])
             
             with col3:
-                fecha = st.date_input("📅 Fecha", min_value=date.today())
+                fecha = st.date_input("📅 Fecha", min_value=today_scl())
             with col4:
                 hora = st.time_input("🕐 Hora", value=None, help="Opcional: hora específica del día")
             with col5:
                 zona_horaria = st.selectbox("🌍 Zona Horaria", list(ZONAS_HORARIAS.keys()), 
-                                          index=3, help="Zona horaria para la tarea")
+                                          index=list(ZONAS_HORARIAS.keys()).index("🇨🇱 Santiago"), help="Zona horaria para la tarea")
             
             col6, col7 = st.columns([1, 4])
             with col6:
@@ -1078,7 +1089,7 @@ else:
         
         col1, col2 = st.columns(2)
         with col1:
-            mes = st.selectbox("Mes", range(1, 13), format_func=lambda x: calendar.month_name[x], index=datetime.now().month - 1)
+            mes = st.selectbox("Mes", range(1, 13), format_func=lambda x: calendar.month_name[x], index=now_scl().month - 1)
         with col2:
             año = st.selectbox("Año", range(2024, 2030))
         
