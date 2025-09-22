@@ -1,5 +1,8 @@
 streamlit
-Supabase
+supabase
+plotly
+pandas
+python-dateutil
 
 
 
