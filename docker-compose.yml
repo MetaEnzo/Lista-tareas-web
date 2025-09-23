@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8502:8501"
+    environment:
+      - SUPABASE_URL=https://ydyxvjgntouxnxoktbuy.supabase.co
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkeXh5aWdudG91eG54b2t0YnV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg0NTc1NjQsImV4cCI6MjA3NDAzMzU2NH0.PNbtdzqQloV9QF1HkRyfgj2OUcLCVhroYd8agd0T-vU
+    volumes:
+      # Montar código para desarrollo (opcional)
+      - .:/app
+    restart: unless-stopped
+    container_name: tareas-app
+    networks:
+      - tareas-network
+
+networks:
+  tareas-network:
+    driver: bridge

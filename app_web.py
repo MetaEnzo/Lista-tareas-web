@@ -30,6 +30,12 @@ st.set_page_config(
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
+# Debug temporal - comentado para producción
+# if not SUPABASE_URL or not SUPABASE_KEY:
+#     st.error(f"❌ Configuración faltante: URL={SUPABASE_URL[:20]}..., KEY={SUPABASE_KEY[:20]}...")
+# else:
+#     st.success(f"✅ Configuración OK: URL={SUPABASE_URL[:20]}..., KEY={SUPABASE_KEY[:20]}...")
+
 # Inicializar cliente Supabase
 @st.cache_resource
 def init_supabase():
@@ -41,8 +47,11 @@ def verificar_conexion_supabase():
         if not SUPABASE_URL or not SUPABASE_KEY:
             return False, "❌ Faltan credenciales de Supabase"
         
+        # Crear cliente temporal para verificar
+        temp_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        
         # Intentar una consulta simple
-        response = supabase.table('profiles').select("count").limit(1).execute()
+        response = temp_client.table('profiles').select("count").limit(1).execute()
         return True, "✅ Conexión a Supabase exitosa"
     except Exception as e:
         return False, f"❌ Error de conexión: {str(e)}"
@@ -539,7 +548,7 @@ def iniciar_sesion(email, password):
 
 def cerrar_sesion():
     supabase.auth.sign_out()
-    for key in ['logged_in', 'user_id', 'user_email', 'user_nombre']:
+    for key in ['logged_in', 'user_id', 'user_email', 'user_nombre', 'mostrar_popup', 'tarea_seleccionada', 'editar_tarea_id']:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -801,67 +810,58 @@ if 'logged_in' not in st.session_state or not st.session_state['logged_in']:
     col_tema = st.columns([4, 1])[1]
     with col_tema:
         tema_icon = "🌙" if st.session_state.tema == "claro" else "☀️"
-        tema_text = "Oscuro" if st.session_state.tema == "claro" else "Claro"
-        if st.button(f"{tema_icon} {tema_text}", use_container_width=True, type="secondary"):
+        if st.button(tema_icon, use_container_width=True, type="secondary", help="Cambiar tema"):
             st.session_state.tema = "oscuro" if st.session_state.tema == "claro" else "claro"
             st.rerun()
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Espacio para mantener el layout
+    st.empty()
     
-    with col2:
-        # Botón de diagnóstico
-        if st.button("🔧 Verificar Conexión", type="secondary", help="Verifica si la conexión a Supabase está funcionando"):
-            conexion_ok, mensaje = verificar_conexion_supabase()
-            if conexion_ok:
-                st.success(mensaje)
-            else:
-                st.error(mensaje)
-        
-        tab1, tab2 = st.tabs(["🔑 Iniciar Sesión", "📝 Crear Cuenta"])
-        
-        with tab1:
-            with st.form("login_form"):
-                st.subheader("Bienvenido de vuelta")
-                email = st.text_input("📧 Email", placeholder="tu@email.com")
-                password = st.text_input("🔒 Contraseña", type="password")
-                
-                submit = st.form_submit_button("Iniciar Sesión", type="primary", use_container_width=True)
-                
-                if submit:
-                    if email and password:
-                        if iniciar_sesion(email, password):
-                            st.success("✅ ¡Bienvenido!")
-                            st.balloons()
-                            st.rerun()
-                        else:
-                            st.error("❌ Email o contraseña incorrectos")
+    tab1, tab2 = st.tabs(["🔑 Iniciar Sesión", "📝 Crear Cuenta"])
+    
+    with tab1:
+        with st.form("login_form"):
+            st.subheader("Bienvenido de vuelta")
+            email = st.text_input("📧 Email", placeholder="tu@email.com")
+            password = st.text_input("🔒 Contraseña", type="password")
+            
+            submit = st.form_submit_button("Iniciar Sesión", type="primary", use_container_width=True)
+            
+            if submit:
+                if email and password:
+                    if iniciar_sesion(email, password):
+                        st.success("✅ ¡Bienvenido!")
+                        st.balloons()
+                        st.rerun()
                     else:
-                        st.warning("Por favor completa todos los campos")
+                        st.error("❌ Email o contraseña incorrectos")
+                else:
+                    st.warning("Por favor completa todos los campos")
         
-        with tab2:
-            with st.form("register_form"):
-                st.subheader("Crea tu cuenta gratis")
-                nombre = st.text_input("👤 Tu nombre", placeholder="Juan Pérez")
-                email = st.text_input("📧 Email", placeholder="tu@email.com")
-                password = st.text_input("🔒 Contraseña", type="password", help="Mínimo 6 caracteres")
-                password2 = st.text_input("🔒 Confirmar contraseña", type="password")
-                
-                submit = st.form_submit_button("Crear Cuenta", type="primary", use_container_width=True)
-                
-                if submit:
-                    if not nombre or not email or not password:
-                        st.warning("Por favor completa todos los campos")
-                    elif password != password2:
-                        st.error("Las contraseñas no coinciden")
-                    elif len(password) < 6:
-                        st.error("La contraseña debe tener mínimo 6 caracteres")
+    with tab2:
+        with st.form("register_form"):
+            st.subheader("Crea tu cuenta gratis")
+            nombre = st.text_input("👤 Tu nombre", placeholder="Juan Pérez")
+            email = st.text_input("📧 Email", placeholder="tu@email.com")
+            password = st.text_input("🔒 Contraseña", type="password", help="Mínimo 6 caracteres")
+            password2 = st.text_input("🔒 Confirmar contraseña", type="password")
+            
+            submit = st.form_submit_button("Crear Cuenta", type="primary", use_container_width=True)
+            
+            if submit:
+                if not nombre or not email or not password:
+                    st.warning("Por favor completa todos los campos")
+                elif password != password2:
+                    st.error("Las contraseñas no coinciden")
+                elif len(password) < 6:
+                    st.error("La contraseña debe tener mínimo 6 caracteres")
+                else:
+                    success, message = registrar_usuario(email, password, nombre)
+                    if success:
+                        st.success(message)
+                        st.info("👆 Ve a la pestaña 'Iniciar Sesión'")
                     else:
-                        success, message = registrar_usuario(email, password, nombre)
-                        if success:
-                            st.success(message)
-                            st.info("👆 Ve a la pestaña 'Iniciar Sesión'")
-                        else:
-                            st.error(message)
+                        st.error(message)
 
 # APLICACIÓN PRINCIPAL (Usuario logueado)
 else:
@@ -878,8 +878,7 @@ else:
             st.write("🎨")
         with col2:
             tema_icon = "🌙" if st.session_state.tema == "claro" else "☀️"
-            tema_text = "Tema Oscuro" if st.session_state.tema == "claro" else "Tema Claro"
-            if st.button(f"{tema_icon} {tema_text}", use_container_width=True, type="secondary"):
+            if st.button(tema_icon, use_container_width=True, type="secondary", help="Cambiar tema"):
                 st.session_state.tema = "oscuro" if st.session_state.tema == "claro" else "claro"
                 st.rerun()
         
@@ -1098,13 +1097,28 @@ else:
         with col2:
             año = st.selectbox("Año", range(2024, 2030))
         
+        # Header del calendario con mes y año
+        mes_nombre = calendar.month_name[mes]
+        st.markdown(f"""
+        <div style="text-align: center; margin: 20px 0; padding: 15px; background: var(--bg-secondary, #f8f9fa); border-radius: 10px; border: 1px solid var(--border-light, #e0e0e0);">
+            <h2 style="margin: 0; color: var(--text-primary, #333); font-size: 28px; font-weight: 600;">
+                📅 {mes_nombre} {año}
+            </h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Calendario
         cal = calendar.monthcalendar(año, mes)
         dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
         
+        # Header de días de la semana
         cols = st.columns(7)
         for i, dia in enumerate(dias):
-            cols[i].markdown(f"**{dia}**")
+            cols[i].markdown(f"""
+            <div style="text-align: center; padding: 8px; background: var(--bg-tertiary, #f0f0f0); border-radius: 5px; margin: 2px; font-weight: 600; color: var(--text-primary, #333);">
+                {dia}
+            </div>
+            """, unsafe_allow_html=True)
         
         tareas = obtener_tareas()
         
@@ -1117,11 +1131,20 @@ else:
                     fecha_str = f"{año}-{mes:02d}-{dia:02d}"
                     tareas_dia = [t for t in tareas if t.get('fecha') and t['fecha'].startswith(fecha_str)]
                     
-                    if tareas_dia:
-                        emojis = "".join([CATEGORIAS[t.get('categoria', '⚡ Otro')]["emoji"] for t in tareas_dia[:3]])
-                        cols[i].markdown(f"**{dia}**\n{emojis}")
-                    else:
-                        cols[i].markdown(f"{dia}")
+                    with cols[i]:
+                        if tareas_dia:
+                            # Mostrar emojis de tareas (sin click)
+                            emojis = "".join([CATEGORIAS[t.get('categoria', '⚡ Otro')]["emoji"] for t in tareas_dia[:3]])
+                            st.markdown(f"<div style='text-align: center; font-size: 12px;'>{emojis}</div>", unsafe_allow_html=True)
+                            
+                            # Mostrar el número del día
+                            st.markdown(f"**{dia}**")
+                        else:
+                            st.markdown(f"{dia}")
+        
+        # Información adicional del calendario
+        st.markdown("---")
+        st.info("💡 **Tip**: Los emojis en el calendario representan las categorías de tus tareas. Ve a la pestaña 'Tareas' para ver los detalles completos.")
     
     with tab3:
         st.header("📊 Dashboard de Productividad")
